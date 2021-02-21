@@ -106,14 +106,6 @@ int scull_read_procmem(struct seq_file *s, void *v)
 }
 
 
-
-
-
-
-
-
-
-
 /*
  * Kernel uses struct cdev to represent char devices internally.
  * Before kernel invokes device's operations, must allocate and register one or
@@ -567,32 +559,6 @@ ssize_t scull_write(struct file *filp, const char __user *buf, size_t count,
     mutex_unlock(&dev->lock);
     return retval;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
