@@ -1,0 +1,10 @@
+dev_t: 44
+    (linux/types.h) hold device numbers (major & minor)
+MKDEV(int major, int minor): 44
+    given major, minor numbers, turn into a dev_t
+
+int alloc_chrdev_region(dev_t *dev, unsigned int firstminor, 
+                        unsigned int count, char *name): 45
+
+void unregister_chrdev_region()
+

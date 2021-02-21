@@ -87,6 +87,9 @@ struct scull_qset {
 	struct scull_qset *next;
 };
 
+/*
+ * Internally, scull represents each device with a structure of type struct scull_dev
+ */ 
 struct scull_dev {
 	struct scull_qset *data;  /* Pointer to first quantum set */
 	int quantum;              /* the current quantum size */
@@ -94,7 +97,8 @@ struct scull_dev {
 	unsigned long size;       /* amount of data stored here */
 	unsigned int access_key;  /* used by sculluid and scullpriv */
 	struct mutex lock;        /* mutual exclusion semaphore */
-	struct cdev cdev;	        /* Char device structure */
+	struct cdev cdev;	        /* Char device structure that interfaces our device to the kernel */
+	// note that cdev is defined in linux/cdev.h
 };
 
 
