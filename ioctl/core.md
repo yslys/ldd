@@ -71,18 +71,18 @@ A user application has to generate a **request code** and the **device driver mo
 2. uses the **request code** in the device driver module to determine which action to perform.
 
 As we have noticed, such **request code** is important, so we need to talk about it in details. Firstly, it has 4 main parts:
-1. A Magic number - 8 bits
+1. A Magic number - 8 bits:
     usually defined at the beginning, e.g. ```#define PRIN_MAGIC 'P'```
-2. A sequence number - 8 bits
+2. A sequence number - 8 bits:
     also called ordinal number
-3. Argument type (typically 14 bits), if any
+3. Argument type (typically 14 bits), if any:
     the magic number assiciated with the device
-4. Direction of data transfer - 2 bits
+4. Direction of data transfer - 2 bits:
     e.g. if request code is ```SETFONT```, then the direction will be user application -> device driver module; if ```GETFONT```, then the direction will be reversed
 
 *Now we have a brief understanding of the **request code***, but actually, we still need to figure out how to **generate** such code: *using predefined function-like macros in Linux*.
 1. ```_IO(type,nr)``` - for a command that has no argument
-    
+
 2. ```_IOR(type,nr,datatype)``` - for reading data from the driver
 3. ```_IOW(type,nr,datatype)``` - for writing data
 4. ```_IOWR(type,nr,datatype)``` - for bidirectional transfers
