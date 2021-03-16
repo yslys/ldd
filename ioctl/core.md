@@ -11,12 +11,13 @@
 
 ### ioctl background
 Most drivers need i) ability to read/write device and ii) perform various types of hardware control via device driver. User space must be able to request:
-    1. device lock its door
-    2. eject its media
-    3. report error info
-    4. change a baud rate
-    5. self destruct
-    6. etc.
+    
+1. device lock its door
+2. eject its media
+3. report error info
+4. change a baud rate
+5. self destruct
+
 The above operations are usually supported via ```ioctl``` method. In user space, it has the prototype of:
 ```
 int ioctl(int fd, unsigned long cmd, ...);
@@ -39,6 +40,7 @@ int ioctl(int fd, unsigned long cmd, ...);
        request are located in the file <sys/ioctl.h>.
  */
 ```
+
 Since a system call cannot have a variable number of arguments, the dots in the prototype represents a single **optional argument** - ```char *argp```. Such dots are used to prevent type checking during compilation.
 
 The third argument depends on the **specific control command (2nd argument)** being issued. Such commands may take no arguments, or an integer value, or a pointer to other data. Using a pointer is the way to pass arbitrary data to the ioctl call; the device is then able to exchange any amount of data with user space.
@@ -46,8 +48,9 @@ The third argument depends on the **specific control command (2nd argument)** be
 As we can see, the ```ioctl```'s arguments are unstructured, which, makes it hard to make such arguments work identically on all systems. E.g. 64-bit systems with a userspace process running in 32-bit mode (haven't figured out why).
 
 Hence, we need to implement miscellaneous control operations. There are two means:
-    i) embedding commands into the data stream (in this chapter)
-    ii) using virtual filesystems, either sysfs or driverspecific filesystems (chapter 14).
+
+i) embedding commands into the data stream (in this chapter)
+ii) using virtual filesystems, either sysfs or driverspecific filesystems (chapter 14).
 
 
 ### ioctl driver method prototype
@@ -92,10 +95,11 @@ The *ioctl-number.txt* file lists the magic numbers used throughout the kernel, 
 
 The header file *<asm/ioctl.h>*, which is included by *<linux/ioctl.h>*, defines macros that help set up the **command numbers** as follows: 
 
-    1. ```_IO(type,nr)``` - for a command that has no argument
-    2. ```_IOR(type,nr,datatype)``` - for reading data from the driver
-    3. ```_IOW(type,nr,datatype)``` - for writing data
-    4. ```_IOWR(type,nr,datatype)``` - for bidirectional transfers
+1. ```_IO(type,nr)``` - for a command that has no argument
+2. ```_IOR(type,nr,datatype)``` - for reading data from the driver
+3. ```_IOW(type,nr,datatype)``` - for writing data
+4. ```_IOWR(type,nr,datatype)``` - for bidirectional transfers
+
 The type and number (nr) fields are passed as arguments, and the size field is derived by applying sizeof to the datatype argument.
 
 See *scull.h* in this directory for more detials of how *ioctl* commands are defined in scull. Such commands set and get the driver's configurable parameters.
