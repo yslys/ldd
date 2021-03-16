@@ -64,7 +64,7 @@ int ioctl(int fd, int request, ...)
 ```
 1. ```fd``` - file descriptor, returned by ```open```
 2. ```request``` - request code, identify what action to do on such device
-3. ```void *``` - depends on the 2nd argument, e.g. if the second argument is ```SETFONT```, the third argument can be the font name such as ```"Arial"```
+3. 3rd argument ```void *``` - depends on the 2nd argument, e.g. if the second argument is ```SETFONT```, the third argument can be the font name such as ```"Arial"```
 
 A user application has to generate a **request code** and the **device driver module** to determine which configuration on device must be played with. In other words: 
 1. the user application sends the **request code** using ```ioctl```
@@ -80,13 +80,43 @@ As we have noticed, such **request code** is important, so we need to talk about
 4. Direction of data transfer - 2 bits:
     e.g. if request code is ```SETFONT```, then the direction will be user application -> device driver module; if ```GETFONT```, then the direction will be reversed
 
-*Now we have a brief understanding of the **request code***, but actually, we still need to figure out how to **generate** such code: *using predefined function-like macros in Linux*.
+*Now we have a brief understanding of the **request code***, but actually, we still need to figure out how to **generate** such code: *using predefined function-like macros in Linux* as follows:
 1. ```_IO(type,nr)``` - for a command that has no argument
-
 2. ```_IOR(type,nr,datatype)``` - for reading data from the driver
 3. ```_IOW(type,nr,datatype)``` - for writing data
 4. ```_IOWR(type,nr,datatype)``` - for bidirectional transfers
 
+#### Example 1
+Say, we would like to pause printer. Since pausing the printer does not require any data transfer, we could use ```_IO(type,nr)```, see the code below:
+```
+#define PRIN_MAGIC 'P' // define the magic number at the beginning
+#define SEQ_NUM 0 // define the sequence number
+#define PAUSE_PRIN _IO(PRIN_MAGIC, SEQ_NUM) // define the request code PAUSE_PRIN
+                                            // using _IO(PRIN_MAGIC, NUM)
+```
+After we have done such things, user could use ```ioctl``` as:
+```
+ret_val = ioctl(fd, PAUSE_PRIN) // note that this ioctl takes two arguments
+                                // because no extra arguments is needed here
+```
+Then, the corresponding syscall in the driver module will receive the code and pause the printer.
+
+#### Example 2
+Say, we would like to set the font to be Arial. The direction of data transfer will be: user application -> printer (device), and we would like to write to the device; hence, we have to use the predefined function-like macro - ```_IOW(type,nr,datatype)```. The code is as follows:
+```
+#define PRIN_MAGIC 'S' // define the magic number at the beginning (S = SET)
+#define SEQ_NO 1 // define the sequence number as 1
+#define SETFONT _IOW(PRIN_MAGIC, SEQ_NO, unsigned long) // define the request code
+                                                        // SETFONT
+```
+```datatype``` here gives us the type of the **third argument** in ```ioctl```. Someone may be wondering why the type of which is ```unsigned long```. Recall that the prototype of ioctl is ```int ioctl(int fd, int request, ...)```, and the type of the optional 3rd argument is ```void *```, we need to interpret it to be an address, which is of type ```unsigned long```.
+
+Now, the user could execute the following to interact with the printer (device):
+```
+char *font = "Arial";
+ret_val = ioctl(fd, SETFONT, font); // font is a pointer, i.e. an address
+```
+The address of ```font``` is passed to corresponding syscall implemented in device driver module as ```unsigned long``` and we need to cast it to proper type before using it. Kernel space can access user space and hence this works. 
 
 
 ### ioctl driver method prototype
