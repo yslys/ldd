@@ -48,9 +48,8 @@ The third argument depends on the **specific control command (2nd argument)** be
 As we can see, the ```ioctl```'s arguments are unstructured, which, makes it hard to make such arguments work identically on all systems. E.g. 64-bit systems with a userspace process running in 32-bit mode (haven't figured out why).
 
 Hence, we need to implement miscellaneous control operations. There are two means:
-
-i) embedding commands into the data stream (in this chapter)
-ii) using virtual filesystems, either sysfs or driverspecific filesystems (chapter 14).
+1. embedding commands into the data stream (in this chapter)
+2. using virtual filesystems, either sysfs or driverspecific filesystems (chapter 14).
 
 
 ### ioctl driver method prototype
@@ -78,18 +77,17 @@ Need to choose ```ioctl``` numbers for the driver according to the Linux kernel 
 
 Such header defines the bitfields that will be using: 
 
-    1) type - 
-        the magic number assiciated with the device
+1. ```type``` - 
+    the magic number assiciated with the device
 
-    2) ordinal number - 
-        eight bits (_IOC_NRBITS) wide
+2. ```ordinal number``` - 
+    eight bits (_IOC_NRBITS) wide
 
-    3) direction of transfer -
-        possible values are _IOC_NONE (no data transfer), _IOC_READ, _IOC_WRITE,
-        and _IOC_READ|_IOC_WRITE (data is transferred both ways)
+3. ```direction of transfer``` -
+    possible values are _IOC_NONE (no data transfer), _IOC_READ, _IOC_WRITE, and _IOC_READ|_IOC_WRITE (data is transferred both ways)
 
-    4) size of argument - 
-         the size of user data involved (can be found in the macro _IOC_SIZEBITS)
+4. ```size of argument``` - 
+    the size of user data involved (can be found in the macro _IOC_SIZEBITS)
 
 The *ioctl-number.txt* file lists the magic numbers used throughout the kernel, so we’ll be able to choose our own magic number and avoid overlaps. The text file also lists the reasons why the convention should be used.
 
@@ -100,7 +98,9 @@ The header file *<asm/ioctl.h>*, which is included by *<linux/ioctl.h>*, defines
 3. ```_IOW(type,nr,datatype)``` - for writing data
 4. ```_IOWR(type,nr,datatype)``` - for bidirectional transfers
 
-The type and number (nr) fields are passed as arguments, and the size field is derived by applying sizeof to the datatype argument.
+As we can see here, for the command that has no argument, there's no ```datatype``` field because we do not need to specify what type of data to read/write. 
+
+The ```type``` and ```number (nr)``` fields are passed as arguments, and the size field is derived by applying sizeof to the datatype argument.
 
 See *scull.h* in this directory for more detials of how *ioctl* commands are defined in scull. Such commands set and get the driver's configurable parameters.
 
