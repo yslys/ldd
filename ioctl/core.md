@@ -74,6 +74,7 @@ The ioctl command numbers should be unique across the system in order to prevent
 Need to choose ```ioctl``` numbers for the driver according to the Linux kernel convention - first check *include/asm/ioctl.h* and *Documentation/ioctl-number.txt*. 
 
 Such header defines the bitfields that will be using: 
+
     1) type - 
         the magic number assiciated with the device
 
