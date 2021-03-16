@@ -22,16 +22,18 @@ The above operations are usually supported via ```ioctl``` method. In user space
 ```
 int ioctl(int fd, unsigned long cmd, ...);
 
+// fd - file descriptor
+
 /*
- * The ioctl() system call manipulates the underlying device
+  The ioctl() system call manipulates the underlying device
        parameters of special files.  In particular, many operating
        characteristics of character special files (e.g., terminals) may
-       be controlled with ioctl() requests.  The argument fd must be an
-       open file descriptor.
-
-       The second argument is a device-dependent request code.  The
-       third argument is an untyped pointer to memory.  It's
-       traditionally char *argp (from the days before void * was valid
+       be controlled with ioctl() requests.  
+       
+       The argument fd must be an open file descriptor.
+       The second argument is a device-dependent request code.  
+       The third argument is an untyped pointer to memory.  
+       It's traditionally char *argp (from the days before void * was valid
        C), and will be so named for this discussion.
 
        An ioctl() request has encoded in it whether the argument is an
@@ -50,6 +52,41 @@ As we can see, the ```ioctl```'s arguments are unstructured, which, makes it har
 Hence, we need to implement miscellaneous control operations. There are two means:
 1. embedding commands into the data stream (in this chapter)
 2. using virtual filesystems, either sysfs or driverspecific filesystems (chapter 14).
+
+### A small demonstration of ioctl
+*Retrieved from https://stackoverflow.com/questions/15807846/ioctl-linux-device-driver#15856623*
+
+A printer that has configuration options to check and set the font family. ```ioctl``` could be used to get the current font + set the font to a new one. A user application uses ```ioctl``` to send a code to a printer telling it to return the current font or to set the font to a new one.
+
+Here's how a user program will call ```ioctl``` to interact with the printer (device):
+```
+int ioctl(int fd, int request, ...)
+```
+1. ```fd``` - file descriptor, returned by ```open```
+2. ```request``` - request code, identify what action to do on such device
+3. ```void *``` - depends on the 2nd argument, e.g. if the second argument is ```SETFONT```, the third argument can be the font name such as ```"Arial"```
+
+A user application has to generate a **request code** and the **device driver module** to determine which configuration on device must be played with. In other words: 
+1. the user application sends the **request code** using ```ioctl```
+2. uses the **request code** in the device driver module to determine which action to perform.
+
+As we have noticed, such **request code** is important, so we need to talk about it in details. Firstly, it has 4 main parts:
+1. A Magic number - 8 bits
+    usually defined at the beginning, e.g. ```#define PRIN_MAGIC 'P'```
+2. A sequence number - 8 bits
+    also called ordinal number
+3. Argument type (typically 14 bits), if any
+    the magic number assiciated with the device
+4. Direction of data transfer - 2 bits
+    e.g. if request code is ```SETFONT```, then the direction will be user application -> device driver module; if ```GETFONT```, then the direction will be reversed
+
+*Now we have a brief understanding of the **request code***, but actually, we still need to figure out how to **generate** such code: *using predefined function-like macros in Linux*.
+1. ```_IO(type,nr)``` - for a command that has no argument
+    
+2. ```_IOR(type,nr,datatype)``` - for reading data from the driver
+3. ```_IOW(type,nr,datatype)``` - for writing data
+4. ```_IOWR(type,nr,datatype)``` - for bidirectional transfers
+
 
 
 ### ioctl driver method prototype
