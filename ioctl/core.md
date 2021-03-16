@@ -174,5 +174,10 @@ See *scull.h* in this directory for more detials of how *ioctl* commands are def
 ### Using the ioctl argument
 Remember that optional 3rd argument? If that is an integer, it would be easy to handle. However, if that is a pointer, be careful.
 
-+ ```access_ok()```
-    + test test test
++ ```access_ok()``` - address verification
+    + declared in *<asm/uaccess.h>*
+    + ```int access_ok(int type, const void *addr, unsigned long size);```
+    + ```type``` - either ```VERIFY_READ``` (reading the user-space memory area) or ```VERIFY_WRITE``` (writing to user-space memory area)
+    + ```addr``` - user-space address
+    + ```size``` - byte count. If ```ioctl``` needs to read an integer from user space, then ```size = sizeof(int)```. If both read and write are needed, use ```VERIFY_WRITE``` (superset of ```VERIFY_READ```).
+    + return value: 1 on success, 0 on failure (then the driver should return ```-EFAULT```)
