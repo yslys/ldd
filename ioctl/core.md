@@ -171,3 +171,8 @@ The ```type``` and ```number (nr)``` fields are passed as arguments, and the siz
 
 See *scull.h* in this directory for more detials of how *ioctl* commands are defined in scull. Such commands set and get the driver's configurable parameters.
 
+### Using the ioctl argument
+Remember that optional 3rd argument? If that is an integer, it would be easy to handle. However, if that is a pointer, be careful.
+
++ ```access_ok()```
+    + test test test
