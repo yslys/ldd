@@ -75,7 +75,7 @@ Need to choose ```ioctl``` numbers for the driver according to the Linux kernel 
 
 Such header defines the bitfields that will be using: 
     1) type - 
-        the magic number assiciated with the device.
+        the magic number assiciated with the device
 
     2) ordinal number - 
         eight bits (_IOC_NRBITS) wide
@@ -88,4 +88,13 @@ Such header defines the bitfields that will be using:
          the size of user data involved (can be found in the macro _IOC_SIZEBITS)
 
 The *ioctl-number.txt* file lists the magic numbers used throughout the kernel, so we’ll be able to choose our own magic number and avoid overlaps. The text file also lists the reasons why the convention should be used.
+
+The header file *<asm/ioctl.h>*, which is included by *<linux/ioctl.h>*, defines macros that help set up the **command numbers** as follows: 
+    1. ```_IO(type,nr)``` - for a command that has no argument
+    2. ```_IOR(type,nr,datatype)``` - for reading data from the driver
+    3. ```_IOW(type,nr,datatype)``` - for writing data
+    4. ```_IOWR(type,nr,datatype)``` - for bidirectional transfers
+The type and number (nr) fields are passed as arguments, and the size field is derived by applying sizeof to the datatype argument.
+
+See *scull.h* in this directory for more detials of how *ioctl* commands are defined in scull. Such commands set and get the driver's configurable parameters.
 
