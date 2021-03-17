@@ -384,7 +384,15 @@ wait_event_interruptible_timeout(queue, condition, timeout)
 + ```wait_event_interruptible_timeout```:
     + in LDD3's implementation, return 0 regardless of how condition evaluates
 
+**How to wakeup?**
+```wake_up``` the process that ```wait_event```.
+```wake_up_interruptible``` the process that ```wait_event_interruptible```.
+```
+void wake_up(wait_queue_head_t *queue); // wakeup all processes on wait queue
+void wake_up_interruptible(wait_queue_head_t *queue); // wake up an interruptible sleep
+```
 
+### Simple implementation of sleeping
+A simple sleep that implements a device with simple behavior: any process that attempts to read from the device is put to sleep. See *sleepy.c* for more details.
 
-
-
+**What happens if two processes are waiting when ```sleepy_write``` is called?**
