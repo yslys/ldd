@@ -1,5 +1,5 @@
 # Chap 6 - Advanced Char Driver Operations
-### Goal:
+## Goal:
 1. implement functionality more than synchronous read and write
 2. handle concurrency issues
 3. implement ```ioctl``` syscall - a common interface used for device control
@@ -9,6 +9,8 @@
 7. inform user space when your devices are available for reading or writing
 8. implement a few different device access policies within drivers
 
+
+## Device control with ioctl
 ### ioctl background
 Most drivers need i) ability to read/write device and ii) perform various types of hardware control via device driver. User space must be able to request:
     
@@ -181,3 +183,208 @@ Remember that optional 3rd argument? If that is an integer, it would be easy to 
     + ```addr``` - user-space address
     + ```size``` - byte count. If ```ioctl``` needs to read an integer from user space, then ```size = sizeof(int)```. If both read and write are needed, use ```VERIFY_WRITE``` (superset of ```VERIFY_READ```).
     + return value: 1 on success, 0 on failure (then the driver should return ```-EFAULT```)
+    + **only ensures that such address does not point to kernel-space memory.**
+
+Now, let's see how ```access_ok()``` is used:
+```
+int err = 0;
+int retval = 0;
+int tmp;
+
+/*
+ * extract the type and number bitfields, and don't decode
+ * wrong cmds: return ENOTTY (inappropriate ioctl) before access_ok()
+ */
+ if (_IOC_TYPE(cmd) != SCULL_IOC_MAGIC) return -ENOTTY;
+ if (_IOC_NR(cmd) > SCULL_IOC_MAXNR) return -ENOTTY;
+
+/*
+ * the direction is a bitmask, and VERIFY_WRITE catches R/W transfers. 
+ * `Type' is user-oriented, but access_ok is kernel-oriented, 
+ * so the concept of "read" and "write" is reversed
+ */
+if (_IOC_DIR(cmd) & _IOC_READ)
+    err = !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
+else if (_IOC_DIR(cmd) & _IOC_WRITE)
+    err = !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
+
+if (err) return -EFAULT;
+```
+
+After calling ```access_ok```, the driver can safely perform the actual transfer. Besides ```copy_from_user``` and ```copy_to_user```, we could use other functions that are optimized for the most used data sizes (1,2,4,8 bytes). Such functions are defined in *<asm/uaccess.h>*. 
++ ```put_user(datum, ptr)``` and ```__put_user(datum, ptr)```
++ ```get_user(local, ptr)``` and ```__get_user(local, ptr)```
+
+More details in p. 143 of LDD3
+
+### Capabilities and Restricted Operations
+This section mainly talks about permissions to access a device. Linux kernel provides a mechanism called *capabilities*, s.t. a user application can be empowered to perform a specific privileged operation without giving away the ability to perform other unrelated operations. Two syscalls used for permission management are ```capget```, and ```capset```. Hence, can be managed from user space.
+
+Full set of capabilities can be found in *<linux/capability.h>*, including:
+- CAP_DAC_OVERRIDE
+- CAP_NET_ADMIN
+- CAP_SYS_MODULE
+- CAP_SYS_RAWIO
+- CAP_SYS_ADMIN
+- CAP_SYS_TTY_CONFIG
+- See p. 144 for more details
+
+Before performing a privileged operation, a device driver should check that the calling process has the appropriate capability. Capability checkes are performed with the ```capable``` function defined in *<linux/sched.h>*:
+```
+int capable(int capability); // capability has been discussed above
+```
+In *scull* driver, any user is allowed to query the quantum and quantum set sizes, but only privileged users may change those values. When needed, we could do as follows:
+```
+if(!capable(CAP_SYS_ADMIN))
+    return -EPERM; // Error PERMission
+```
+
+### Implementation of ioctl Commands
+Now, we could take a look at the implementation of ioctl Commands. The scull implementation of ioctl only transfers the configurable parameters of the device.
+```
+switch(cmd) {
+    case SCULL_IOCRESET:
+        scull_quantum = SCULL_QUANTUM;
+        scull_qset = SCULL_QSET;
+        break;
+
+    /* Set: arg points to the value */
+    case SCULL_IOCSQUANTUM: 
+        if (! capable (CAP_SYS_ADMIN))
+            return -EPERM;
+        retval = __get_user(scull_quantum, (int __user *)arg);
+        break;
+
+    /* Tell: arg is the value */
+    case SCULL_IOCTQUANTUM: 
+        if (! capable (CAP_SYS_ADMIN))
+            return -EPERM;
+        scull_quantum = arg;
+        break;
+
+    /* Get: arg is pointer to result */
+    case SCULL_IOCGQUANTUM: 
+        retval = __put_user(scull_quantum, (int __user *)arg);
+        break;
+
+    /* Query: return it (it's positive) */
+    case SCULL_IOCQQUANTUM: 
+        return scull_quantum;
+
+    /* eXchange: use arg as pointer */
+    case SCULL_IOCXQUANTUM: 
+        if (! capable (CAP_SYS_ADMIN))
+            return -EPERM;
+        tmp = scull_quantum;
+        retval = __get_user(scull_quantum, (int __user *)arg);
+        if (retval = = 0)
+            retval = __put_user(tmp, (int __user *)arg);
+        break;
+
+    /* sHift: like Tell + Query */
+    case SCULL_IOCHQUANTUM: 
+        if (! capable (CAP_SYS_ADMIN))
+            return -EPERM;
+        tmp = scull_quantum;
+        scull_quantum = arg;
+        return tmp;
+
+    /* redundant, as cmd was checked against MAXNR */
+    default: 
+        return -ENOTTY;
+}
+return retval;
+```
+
+In scull's implementation, it also includes 6 similar entries that act on ```scull_qset```.
+
+*Now, let's take a look from the user's point of view: how to pass and recieve arguments?*
+```
+int quantum;
+
+ioctl(fd,SCULL_IOCSQUANTUM, &quantum); /* Set by pointer */
+ioctl(fd,SCULL_IOCTQUANTUM, quantum); /* Set by value */
+
+ioctl(fd,SCULL_IOCGQUANTUM, &quantum); /* Get by pointer */
+quantum = ioctl(fd,SCULL_IOCQQUANTUM); /* Get by return value */
+
+ioctl(fd,SCULL_IOCXQUANTUM, &quantum); /* Exchange by pointer */
+quantum = ioctl(fd,SCULL_IOCHQUANTUM, quantum); /* Exchange by value */
+```
+
+The above is a demonstration of all calling modes, but in the real-world implementation, data exchanges would be consistently performed, i.e. either through pointers OR by value. AVOID using mixed of two.
+
+
+## Device control w/o ioctl
+Sometimes controlling the device is better accomplished by writing control sequences to the device itself. E.g. the console driver, where so-called escape sequences are used to move the cursor, change the default color, or perform other configuration tasks. 
+
+**Benefit**: user can control the device just by writing data, without needing to use (or sometimes write) programs built just for configuring the device. When devices can be controlled in this manner, the program issuing commands often need not even be running on the same system as the device it is controlling. E.g. *setterm* program.
+
+**Drawback** of controlling by printing: it adds policy constraints to the device; for example, it is viable only if you are sure that the control sequence can’t appear in the data being written to the device during normal operation. This is only partly true for ttys. Although a text display is meant to display only ASCII characters, sometimes control characters can slip through in the data being written and can, therefore, affect the console setup. This can happen, for example, when you cat a binary file to the screen; the resulting mess can contain anything, and you often end up with the wrong font on your console.
+
+More details, see p. 146-147
+
+## Blocking I/O
+How does a driver respond if it cannot immediately satisfy the request? 
+
+A call to read may come when no data is available, or a process could attempt to write, but your device is not ready to accept the data, because your output buffer is full. The calling process usually does not care about such issues; so, in such cases, your driver should (by default) block the process, putting it to sleep until the request can proceed.
+
+Let's take a look at how to put a process to sleep and wake it up again later on.
+
+### Sleeping
+When a process is put to sleep, it is 
+1. marked as being in a special state
+2. removed from the scheduler's run queue
+3. not scheduled on any CPU until sth. comes to change such state
+
+Need to follow the following rules (before sleep):
++ never sleep when you are running in an atomic context
+    + atomic operation discussed in Chap 5
+    + a state where multiple steps must be performed without any sort of concurrent access
++ the driver cannot sleep while holding a a spinlock, seqlock, or RCU lock
++ the driver cannot sleep if interrupts are disabled
++ the driver can sleep while holding a semaphore (be careful: not blocking the process that will eventually wake you up)
++ unaware of changes or how long the sleep was
+
+**How could we find the sleeping process?**
+
+**wait queue** - a list of processes, all waiting for a specific event. 
+- Defined in *<linux/wait.h>*. 
+- Managed by struct ```wait_queue_head_t```
+Statically define and initialize a wait queue:
+```
+DECLARE_WAIT_QUEUE_HEAD(name);
+```
+Dynamically define and initialize a wait queue:
+```
+wait_queue_head_t q;
+DECLARE_WAIT_QUEUE_HEAD(&q);
+```
+
+**How to sleep in Linux?**
+The simplest way is to use ```wait_event```, which combines sleeping with a check on the **condition** a process is waiting for.
+```
+// queue - wait queue head, passed by value.
+// condition - to be checked before sleep, bollean expression evaluated by macro
+//             will be evaluated an arbitrary number of times
+wait_event(queue, condition) 
+wait_event_interruptible(queue, condition)
+wait_event_timeout(queue, condition, timeout)
+wait_event_interruptible_timeout(queue, condition, timeout)
+```
+
++ ```wait_event```: 
+    + put process into an uninterruptible sleep, not what we want
++ ```wait_event_interruptible```: 
+    + can be interrupted by signals, is what we want. 
+    + in LDD3's implementation, returning a nonzero value - sleep was interrupted by some signal, driver may return ```-ERESTARTSYS```.
++ ```wait_event_timeout```:
+    + put process into an uninterruptible sleep for limited time
+    + in LDD3's implementation, return 0 regardless of how condition evaluates
++ ```wait_event_interruptible_timeout```:
+    + in LDD3's implementation, return 0 regardless of how condition evaluates
+
+
+
+
+
