@@ -394,5 +394,72 @@ void wake_up_interruptible(wait_queue_head_t *queue); // wake up an interruptibl
 
 ### Simple implementation of sleeping
 A simple sleep that implements a device with simple behavior: any process that attempts to read from the device is put to sleep. See *sleepy.c* for more details.
+```
+// method for read (put current process to sleep)
+static ssize_t sleepy_read(struct file *filp, char __user *buf, 
+                           size_t count, loff_t *pos)
+{
+    /**
+     * Kernel code can refer to the current process by accessing the global item 
+     * current, defined in <asm/current.h>, which yields a pointer to struct 
+     * task_struct, defined by <linux/sched.h>.
+     */ 
+    printk(KERN_DEBUG "process %i (%s) going to sleep\n", 
+                    current->pid, current->comm); 
+                    // comm - executable name of process, excluding path, 
+                    // in <linux/sched.h>
+    
+    // wait current process to wait queue wq if flag != 0
+    wait_event_interruptible(wq, flag != 0);
+    flag = 0;
+    printk(KERN_DEBUG "awoken %i (%s)\n", current->pid, current->comm);
+}
+
+
+static ssize_t sleepy_write(struct file *filp, const char __user *buf, 
+                            size_t count, loff_t *pos)
+{
+    printk(KERN_DEBUG "process %i (%s) awakening the readers...\n", 
+                    current->pid, current->comm);
+    flag = 1;
+    wake_up_interruptible(&wq);
+    return count; /* succeed, to avoid retrial */
+}
+```
 
 **What happens if two processes are waiting when ```sleepy_write``` is called?**
+As we can see from *sleepy.c*, ```sleepy_read``` will put ```current``` (process) into wait queue - blocked. When ```current``` is waken up, it continues from where it got blocked, i.e. resets ```flag``` to 0 once it wakes up. Then, the second process to wake up would immediately go back to sleep.
+
+However, such **only works on a single-processor system**. Actually, the ```wake_up_interruptible``` call will cause both sleeping processes to wake up. It is entirely possible that they will both note that flag is nonzero before either has the opportunity to reset it.
+
+Therefore, the implementation **needs to be modified**. Before that, we need to cover other topics.
+
+### Blocking and Nonblocking Operations
+Before fully implementing ```read``` and ```write```, we need to decide **when to put a process to sleep**.
+- Sometimes, it's required that an operation should not block.
+- Sometimes, the calling process may inform you that it does not want to block.
+
+We need to implement the following behavior:
++ If a process calls read but no data is (yet) available, the process must block.
+    + Such process is awakened as soon as some data arrives, and returned to the caller
++ If a process calls write and there is no space in the buffer, the process must block.
+    + Such process must be on a different wait queue from the one used for reading.
+    + When space is available in the output buffer, process is awakened.
+
+Every device has *input buffers* and *output buffers*. The input buffer is required to avoid losing data that arrives when nobody is reading. In contrast, data can’t be lost on write, because if the system call doesn’t accept data bytes, they remain in the user-space buffer. Even so, the output buffer is almost always useful for **squeezing more performance out of the hardware**, how?
+- reduce number of context switches 
+- reduce number of user-level/kernel-level transitions
+
+You may have noticed that, the size of the output buffer is critical - too small -> lots of writes; too large -> wasteful; hence, the choice of a suitable size for the output buffer is device-specific. The implementation of buffers is in **Chapter 10**.
+
+In this chapter, since we are discussing **scull**, data is already available when ```read``` is issued, no input buffer is used because data is simply copied to the memory area associated with the device - the device is a buffer.
+
+Explicitly nonblocking I/O is indicated by the ```O_NONBLOCK``` flag (open-nonblock) in ```filp->f_flags```, defined in *<linux/fcntl.h>*, included by *<linux/fs.h>*. The reason it is called "open-nonblock" is that it can be specified at open time.
+
+**TODO:** More details on p. 152 
+
+
+### Example of Blocking I/O
+In *scull/pipe.c*, a pipe-like device.
+
+Usually, a process blocked in a ```read``` call is awakened when data arrives by the hardware issuing an interrupt to signal such an event; then the driver handle the interrupt by awakening the waiting processes. In *scullpipe* driver, it works differently - can be run without requiring any particular hardware or an interrupt handler; instead, using another process to generate the data and wake the reading process.
