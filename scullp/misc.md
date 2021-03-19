@@ -48,14 +48,13 @@
 	};
 	```
 + inode - p. 55. Used by the kernel to internally to represent files (there can be numerous file structures representing multiple open descriptors on a single file, but they all point to a single inode structure)
-    
-	'''
+	```
 	#include
         struct inode {
             dev_t i_rdev; // actual device number
             struct cdev *i_cdev; // kernel’s internal structure that represents char devices
         };
-	'''
+	```
 + loff_t - long offsets
 + PAGE_SIZE - size of a page
 +
