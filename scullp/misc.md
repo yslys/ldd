@@ -2,17 +2,20 @@
 
 + DEBFLAGS - debug flags
 + file - p. 53. represents an open file
-	+ ```#include <linux/fs.h>
-		 struct file {
-		 	mode_t f_mode; // file mode, identifies the file as readable or writable or both
-		 				   // FMODE_READ, FMODE_WRITE, read/write permission check
-		 	loff_t f_ops; // current reading or writing position
-		 	unsigned int f_flags; // file flags (O_RDONLY, O_NONBLOCK, O_SYNC)
-		 	struct file_operations *f_op;
-		 	void *private_data; // open syscall sets this ptr to NULL before calling
-                                // open for the driver
-            struct dentry *f_dentry; // directory entry associated with the file
-		 };```
+	+ 
+```
+#include <linux/fs.h>
+struct file {
+    mode_t f_mode; // file mode, identifies the file as readable or writable or both
+                    // FMODE_READ, FMODE_WRITE, read/write permission check
+    loff_t f_ops; // current reading or writing position
+    unsigned int f_flags; // file flags (O_RDONLY, O_NONBLOCK, O_SYNC)
+    struct file_operations *f_op;
+    void *private_data; // open syscall sets this ptr to NULL before calling
+                        // open for the driver
+    struct dentry *f_dentry; // directory entry associated with the file
+};
+```
 + FILE - p. 53. only used in C
 + file_operations - p. 49
     + ```#include <linux/fs.h>
@@ -48,7 +51,7 @@
          struct inode {
              dev_t i_rdev; // actual device number
              struct cdev *i_cdev; // kernel’s internal structure that represents char devices
-         }'''
+         };'''
 + loff_t - long offsets
 + PAGE_SIZE - size of a page
 +
