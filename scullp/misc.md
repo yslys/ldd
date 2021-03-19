@@ -2,8 +2,7 @@
 
 + DEBFLAGS - debug flags
 + file - p. 53. represents an open file
-	+ 
-```
+	+ ```
 #include <linux/fs.h>
 struct file {
     mode_t f_mode; // file mode, identifies the file as readable or writable or both
