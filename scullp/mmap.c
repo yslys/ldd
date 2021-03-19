@@ -83,6 +83,8 @@ static vm_fault_t scullp_vma_nopage(struct vm_fault *vmf)
 	struct page *page = NULL;
 	void *pageptr = NULL; // default to "missing"
 
+	vm_fault_t retval = VM_FAULT_NOPAGE; // fault installed the pte, not return page
+
 	mutex_lock(&dev->mutex);
 
 	// vma->vm_pgoff stores the page frame number (vm_pgoff = physical addr >> PAGE_SHIFT)
@@ -101,8 +103,30 @@ static vm_fault_t scullp_vma_nopage(struct vm_fault *vmf)
 	offset >>= PAGE_SHIFT; // now offset stores # of pages
 
 
-	for(ptr = dev;)
+	for(ptr = dev; ptr && offset >= dev->qset;){
+		ptr = ptr->next;
+		offset -= dev->qset;
+	}
 
+	if(ptr && ptr->data){
+		pageptr = ptr->data[offset];
+	}
+
+	// hole or EOF
+	if(!pageptr){
+		go to out; 
+	}
+
+	page = virt_to_page(pageptr);
+
+	// got it, now increment the count
+	get_page(page);
+	vmf->page = page;
+	retval = 0;
+
+	out:
+		mutex_unlock(&dev->mutex);
+		return retval;
 
 }
 

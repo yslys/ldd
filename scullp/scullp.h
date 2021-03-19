@@ -60,8 +60,8 @@ struct scullp_dev {
 	int order;                /* the current allocation order */
 	int qset;                 /* the current array size */
 	size_t size;              /* 32-bit will suffice */
-	struct mutex mutex;     /* Mutual exclusion */
-	struct cdev cdev;
+	struct mutex mutex;       /* Mutual exclusion */
+	struct cdev cdev;         /* character device structure */
 };
 
 extern struct scullp_dev *scullp_devices;

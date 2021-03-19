@@ -3,7 +3,7 @@
 #DEBUG = y
 
 
-ifeq ($(DEBUG),y)
+ifeq ($(DEBUG),y) # if uncomment line3, then this will evaluate to true
   DEBFLAGS = -O -g -DSCULLP_DEBUG # "-O" is needed to expand inlines
 else
   DEBFLAGS = -O2
