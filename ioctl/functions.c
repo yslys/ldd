@@ -36,3 +36,41 @@ module_param(name, type, perm);
  * is the pointer to the container, i.e. pointer to the struct scull_dev.
  */
 container_of(pointer, container_type, container_field);
+
+
+/**
+ * #include <sys/mman.h>
+ * mmap() creates a new  mapping in the virtual address space of the calling 
+ * process. The contents of a file mapping are initialized using length bytes 
+ * starting at offset in the file referred to by the file descriptor fd.  
+ * offset must be a multiple of the page size as returned by sysconf(_SC_PAGE_SIZE).
+ * 
+ * @addr: starting address for the new mapping
+ *          if addr == NULL, kernel chooses the address at which to create the 
+ *              mapping;
+ *          if addr != NULL, kernel takes it as a hint about where to place the 
+ *              mapping;
+ * @length: the length of the mapping
+ * @prot: the desired memory protection of the mapping (must not conflict with 
+ *        the open mode of the file). It is either PROT_NONE or the bitwise OR 
+ *        of one or more of the following flags:
+ *          - PROT_EXEC  Pages may be executed.
+ *          - PROT_READ  Pages may be read.
+ *          - PROT_WRITE Pages may be written.
+ *          - PROT_NONE  Pages may not be accessed.
+ * @flags: determines whether updates to the mapping are visible to other
+ *         processes mapping the same region, and whether updates are carried 
+ *         through to the underlying file.
+ * @fd: file descriptor of the file to be mapped
+ * @offset: offset in the file (fd)   
+ * @return: address of the new mapping
+ */ 
+void *mmap(void *addr, size_t length, int prot, int flags,
+                  int fd, off_t offset);
+
+/**
+ * #include <stdio.h>
+ * @return: the file descriptor associated with the stream pointed to by stream
+ */
+int fileno(FILE *stream);
+
