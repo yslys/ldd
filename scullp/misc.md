@@ -48,7 +48,7 @@
          struct inode {
              dev_t i_rdev; // actual device number
              struct cdev *i_cdev; // kernel’s internal structure that represents char devices
-         };'''
+         }'''
 + loff_t - long offsets
 + PAGE_SIZE - size of a page
 +
