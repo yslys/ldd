@@ -1,6 +1,8 @@
 ## Set of keywords in LDD3 codes
 
 + DEBFLAGS - debug flags
++ dev->order: p. 222. The base-two logarithm of the number of pages you are requesting or freeing (i.e., log2N). For example, order is 0 if you want one
+page and 3 if you request eight pages. If order is too big (no contiguous area of that size is available), the page allocation fails.
 + file - p. 53. represents an open file
 	```
 	#include <linux/fs.h>
@@ -49,13 +51,15 @@
 	```
 + inode - p. 55. Used by the kernel to internally to represent files (there can be numerous file structures representing multiple open descriptors on a single file, but they all point to a single inode structure)
 	```
-	#include
-        struct inode {
-            dev_t i_rdev; // actual device number
-            struct cdev *i_cdev; // kernel’s internal structure that represents char devices
-        };
+	#include <linux/fs.h>
+	struct inode {
+		dev_t i_rdev; // actual device number
+		struct cdev *i_cdev; // kernel’s internal structure that represents char devices
+	};
 	```
 + loff_t - long offsets
++ S_IRUGO - everyone can read (RUGO - R:read, UGO:user, group, others)
++ S_IWUSR - user can write    (WUSR - W:write, USR:user)
 + PAGE_SIZE - size of a page
 +
 + -ERESTARTSYS - Error RESTART SYStem (return -ERESTARTSYS)
