@@ -37,7 +37,7 @@
 // get such params from scullp.h
 int scullp_major =    SCULLP_MAJOR;
 int scullp_devs  =    SCULLP_DEVS; // # of bare scullp devices
-int scullp_qset  =    SCULLP_QSET;
+int scullp_qset  =    SCULLP_QSET; // length of the quantum set array
 int scullp_order =    SCULLP_ORDER;
 
 // define module parameters; 0 means there's no sysfs entry
@@ -508,6 +508,9 @@ int scullp_trim(struct scullp_dev *dev)
 /**
  * Register the device (with minor number = index)
  * Set up the char_dev (cdev) structure for this device
+ * @dev: ptr to the device to be registered
+ * @index: index of the device (minor number)
+ * @caller: scullp_init()
  */ 
 static void scullp_setup_cdev(struct scullp_dev *dev, int index)
 {
@@ -554,5 +557,71 @@ int scullp_init(void)
     if(result < 0){
         return result;
     }
+
+    /**
+     * allocate the devices - we cannot have them static because the number can 
+     * be specified at load time.
+     */
+    scullp_devices = kmalloc(scullp_devs * sizeof(struct scullp_dev), GFP_KERNEL);
+    if(!scullp_devices){
+        result = -ENOMEM;
+        goto fail_malloc;
+    } 
+
+    /**
+     * after kmalloc(), again, use memset() to fill such space with constant 
+     * bytes 0
+     */
+    memset(scullp_devices, 0, scullp_devs * sizeof(struct scullp_dev));
+
+    /**
+     * for each device allocated, set its corresponding info (order, qset)
+     * then, initialize the mutex
+     */
+    for(i = 0; i < scullp_devs; i++){
+        scullp_devices[i].order = scullp_order;
+        scullp_devices[i].qset = scullp_qset;
+        mutex_init(&scullp_devices[i].mutex);
+        scullp_setup_cdev(scullp_devices + i, i);// increment pointer
+    } 
     
+#ifdef SCULLP_USE_PROC /* only when available */
+    proc_create("scullpmem", 0, NULL, proc_ops_wrapper(&scullp_proc_ops, scullp_pops));
+#endif
+
+    return 0;
+
+    fail_malloc:
+        unregister_chrdev_region(dev, scullp_devs);
+        return result;
 }
+
+/**
+ * scullp cleanup function
+ * 
+ */
+void scullp_cleanup(void)
+{
+    int i;
+
+#ifdef SCULLP_USE_PROC
+    remove_proc_entry("scullpmem", NULL);
+#endif
+
+    for(i = 0; i < scullp_devs; i++){
+        // cleanup the cdev in each scullp device
+        cdev_del(&scullp_devices[i].cdev);
+        scullp_trim(scullp_devices + i); // TODO: why using i here???
+        /** 
+         * this is simply pointer arithmetic
+         * when we increment a pointer, we go to the next pointer
+         * equivalent to: ptr + i * sizeof(ptr)
+         */ 
+    }
+    kfree(scullp_devices);
+    unregister_chrdev_region(MKDEV(scullp_major, 0), scullp_devs);
+} 
+
+
+module_init(scullp_init);
+module_exit(scullp_cleanup);
