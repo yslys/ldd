@@ -132,4 +132,50 @@ int cdev_add(struct cdev *dev, dev_t num, unsigned int count);
  * Context: Process context.
  * Return: 0 if the lock was successfully acquired or %-EINTR if a signal arrived.
  */
-int __sched mutex_lock_interruptible (struct mutex *lock);
+int __sched mutex_lock_interruptible(struct mutex *lock);
+
+
+/**
+ * register a range of device numbers (the major number must be provided)
+ * @from: the first in the desired range of device numbers.
+ * @count: the number of consecutive device numbers required.
+ * @name: the name of the device or driver.
+ * @return: 0 on success, negative error code on failure.
+ */
+int register_chrdev_region(dev_t from, unsigned count, const char *name);
+
+/**
+ * dynamically register a range of device numbers, major number chosen dynamically
+ * @dev: output parameter for first assigned number
+ * @baseminor: first of the requested range of minor numbers
+ * @count: the number of minor numbers required
+ * @name: the name of the associated device or driver
+ * @return: 0 on success, negative error code on failure.
+ */
+int alloc_chrdev_region(dev_t *dev, unsigned baseminor,
+ 	                    unsigned count, const char *name);
+
+/**
+ * initialize the mutex to unlocked state.
+ * it's not allowed to initialize an already locked mutex.
+ * @mutex: the mutex to be initialized
+ */
+mutex_init(mutex); 
+
+/**
+ * remove a character device from the system, possibly freeing the structure itself
+ * @p: ptr to the char device
+ */ 
+void cdev_del(struct cdev *p);
+
+/**
+ * #include <linux/fs.h>
+ * unregister a range of device numbers
+ * @from: the first in the range of numbers to unregister
+ * @count: the number of device numbers to unregister
+ *
+ * This function will unregister a range of @count device numbers,
+ * starting with @from.  The caller should normally be the one who
+ * allocated those numbers in the first place...
+ */
+void unregister_chrdev_region(dev_t from, unsigned count);
