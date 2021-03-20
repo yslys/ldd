@@ -121,3 +121,15 @@ void cdev_init(struct cdev *dev, struct file_operations *fops);
  *          operations on device
  */
 int cdev_add(struct cdev *dev, dev_t num, unsigned int count);
+
+/**
+ * Acquire the mutex that can be interrupted by signals.
+ * @lock: The mutex to be acquired.
+ *
+ * Lock the mutex like mutex_lock(). If a signal is delivered while the
+ * process is sleeping, this function will return without acquiring the mutex.
+ *
+ * Context: Process context.
+ * Return: 0 if the lock was successfully acquired or %-EINTR if a signal arrived.
+ */
+int __sched mutex_lock_interruptible (struct mutex *lock);
