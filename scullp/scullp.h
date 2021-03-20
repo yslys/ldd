@@ -39,7 +39,7 @@
 
 #define SCULLP_MAJOR 0   /* dynamic major by default */
 
-#define SCULLP_DEVS 4    /* scullp0 through scullp3 */
+#define SCULLP_DEVS 4    /* # of scullp devs - scullp0 through scullp3 */
 
 /*
  * The bare device is a variable-length region of memory.
@@ -72,7 +72,7 @@ extern struct file_operations scullp_fops;
  * The different configurable parameters
  */
 extern int scullp_major;     /* main.c */
-extern int scullp_devs;
+extern int scullp_devs;		 /* # of scullp devices */
 extern int scullp_order;
 extern int scullp_qset;
 
