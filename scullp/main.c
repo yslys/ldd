@@ -426,12 +426,12 @@ struct file_operations scullp_fops = {
     .llseek =         scullp_llseek,
     .read =           scullp_read,
     .write =          scullp_write,
-	.unlocked_ioctl = scullp_ioctl,
-	.mmap =	          scullp_mmap,
-	.open =	          scullp_open,
-	.release =        scullp_release,
-	.read_iter =      scull_read_iter,
-	.write_iter =     scull_write_iter,
+    .unlocked_ioctl = scullp_ioctl,
+    .mmap =	          scullp_mmap,
+    .open =	          scullp_open,
+    .release =        scullp_release,
+    .read_iter =      scull_read_iter,
+    .write_iter =     scull_write_iter,
 }; 
 
 
