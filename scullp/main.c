@@ -357,15 +357,129 @@ ssize_t scullp_write(struct file *filp, const char __user *buf, size_t count,
 /**
  * ioctl() implementation
  * @filp: file pointer (for the device)
- * @cmd:
- * @arg:
- * @return:
+ * @cmd: passed from the user, declared in scullp.h
+ * @arg: arg from user space for either scullp_order or scullp_qset
+ * @return: order, or qset, or 0 or negative error code (it depends on cmd)
  */
 long scullp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
     int err = 0, ret = 0, tmp;
 
-    //
+    // don't decode wrong cmds: better returning ENOTTY than EFAULT
+
+    // if (the magic number of the device) cmd targets != that of scullp
+    if(_IOC_TYPE(cmd) != SCULLP_IOC_MAGIC){
+        return -ENOTTY;
+    }
+
+    // if (the sequential number of cmd within this device) > max seq # of scullp
+    if(_IOC_NR(cmd) > SCULLP_IOC_MAXNR){
+        return -ENOTTY;
+    }
+
+    // now, the cmd is valid
+    
+    /**
+     * the type is a bitmask, and VERIFY_WRITE catches R/W transfers.
+     * Note that the type is user-oriented, while verify_area is kernel-oriented.
+     * Hence, the concept of "read" and "write" is reversed.
+     */ 
+
+    // if cmd is _IOC_READ (see macros.c for more details)
+    if(_IOC_DIR(cmd) & _IOC_READ){
+        // see access_ok_version.h for more details, simply is access_ok()
+        err = !access_ok_wrapper(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
+    }
+    else if(_IOC_DIR(cmd) & _IOC_WRITE){
+        err = !access_ok_wrapper(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
+    }
+    if(err){
+        return -EFAULT;
+    }
+
+    // check what cmd is
+    switch(cmd){
+        // reset
+        case SCULLP_IOCRESET: 
+            scullp_qset = SCULLP_QSET;
+            scullp_order = SCULLP_ORDER;
+            break;
+        
+        // Set order using arg (set scullp_order to be user input - arg)
+        case SCULLP_IOCSORDER:
+            ret = __get_user(scullp_order, (int __user *)arg);
+            break; 
+        
+        // Tell scullp the order
+        case SCULLP_IOCTORDER:
+            scullp_order = arg;
+            break;
+
+        // Get order (copy scullp_order from kernel space to user space)
+        case SCULLP_IOCGORDER:
+            ret = __put_user(scullp_order, (int __user *)arg);
+            break;
+        
+        // Query the order
+        case SCULLP_IOCQORDER:
+            return scullp_order;
+        
+        // eXchange order
+        case SCULLP_IOCXORDER:
+            tmp = scullp_order;
+            ret = __get_user(scullp_order, (int __user *)arg);
+            if(ret == 0){ // __get_user() success
+                ret = __put_user(tmp, (int __user *)arg);
+            }
+            break;
+
+        // sHift the order (tell + query)
+        case SCULLP_IOCHORDER:
+            tmp = scullp_order; // get current order
+            scullp_order = arg; // tell scullp the new order
+            return tmp;
+        
+        // Set qset using arg
+        case SCULLP_IOCSQSET:
+            ret = __get_user(scullp_qset, (int __user *)arg);
+            break;
+        
+        // Tell scullp qset using value of arg
+        case SCULLP_IOCTQSET:
+            scullp_qset = arg;
+            break;
+        
+        // Get qset and copy to address of arg
+        case SCULLP_IOCGQSET:
+            ret = __put_user(scullp_qset, (int __user *)arg);
+            break;
+
+        // Query the qset
+        case SCULLP_IOCQQSET:
+            return scullp_qset;
+
+        // eXchange qset
+        case SCULLP_IOCXQSET:
+            tmp = scullp_qset;
+            ret = __get_user(scullp_qset, (int __user *)arg);
+            if(ret == 0){ // on success
+                ret = __put_user(tmp, (int __user *)arg);
+            }
+            break;
+
+        // sHift qset (tell + query)
+        case SCULLP_IOCHQSET:
+            tmp = scullp_qset;
+            scullp_qset = arg;
+            return tmp;
+
+        // this is redundant, as cmd was checked against MAXNR
+        default: 
+            return -ENOTTY;
+        
+        return ret;
+    }
+
 }
 
 /**
@@ -532,6 +646,11 @@ static void scullp_setup_cdev(struct scullp_dev *dev, int index)
      */
     err = cdev_add(&dev->cdev, devno, 1); 
 
+    /**
+     * for the condition of if-statement
+     * it evaluates to false only if the condition is equal to 0
+     * otherwise, even it's negative value, it is still evaluated to true
+     */ 
     if(err){
         printk(KERN_NOTICE "Error %d when adding scull%d", err, index);
     }
