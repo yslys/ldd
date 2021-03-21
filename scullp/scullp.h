@@ -89,6 +89,9 @@ struct scullp_dev *scullp_follow(struct scullp_dev *dev, int n);
 
 /*
  * Ioctl definitions
+ * IOC means I/O control
+ * 
+ * For more info, refer to http://www.cs.otago.ac.nz/cosc440/labs/lab06.pdf
  */
 
 /* Use 'K' as magic number */
