@@ -179,3 +179,35 @@ void cdev_del(struct cdev *p);
  * allocated those numbers in the first place...
  */
 void unregister_chrdev_region(dev_t from, unsigned count);
+
+/**
+ * #include <asm/uaccess.h>
+ * used for address verification in user address space (kernel version < 5.0.0)
+ * @type: either VERIFY_READ (reading the user-space memory area). 
+ *        or VERIFY_WRITE (writing to user-space memory area).
+ *        If both read and write are needed, use VERIFY_WRITE (superset of 
+ *        VERIFY_READ).
+ * @addr: user space address
+ * @size: byte count.
+ *        If ioctl() needs to read an integer from user space, then 
+ *        size = sizeof(int). 
+ *        
+ * @return: 1 on success, 0 on failure
+ * @inline: https://www.geeksforgeeks.org/inline-function-in-c/
+ */
+static inline int access_ok(int type, const void *addr, unsigned long size);
+
+/**
+ * #include <asm/uaccess.h>
+ * used for address verification in user address space (kernel version >= 5.0.0)
+ * @addr: user space address
+ * @size: byte count.
+ *        If ioctl() needs to read an integer from user space, then 
+ *        size = sizeof(int). 
+ * @return: 1 on success, 0 on failure
+ * 
+ * @inline: https://www.geeksforgeeks.org/inline-function-in-c/
+ */
+ static inline int access_ok(const void *addr, unsigned long size);
+
+
