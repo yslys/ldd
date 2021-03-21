@@ -210,4 +210,12 @@ static inline int access_ok(int type, const void *addr, unsigned long size);
  */
  static inline int access_ok(const void *addr, unsigned long size);
 
-
+/**
+ * get the minor number of the device represented by inode
+ * #include <linux/fs.h>
+ * @return: minor number of such device
+ */ 
+static inline unsigned iminor(const struct inode *inode)
+{
+	return MINOR(inode->i_rdev); // i_rdev - device represented by this inode
+}

@@ -50,7 +50,7 @@ void scullp_vma_close(struct vm_area_struct *vma)
 
 
 /**
- * a keyword called typedef, which you can use to give a type a new name
+ * typedef - you can use to give a type a new name
  * in this case, vm_fault_t is defined to be the name of int, which stands for
  * the return type for page fault handlers
  */ 
