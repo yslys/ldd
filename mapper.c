@@ -77,9 +77,12 @@ int main(int argc, char **argv)
         fprintf(stderr,"%s: mmap(): %s\n",argv[0],strerror(errno));
         exit(1);
     }
+
     fclose(f);
     fprintf(stderr, "mapped \"%s\" from %lu (0x%08lx) to %lu (0x%08lx)\n",
             fname, offset, offset, offset+len, offset+len);
+
     fwrite(address, 1, len, stdout);
+
     return 0;
 }
