@@ -136,9 +136,15 @@ S_IRUGO
 S_IWUSR
 
 /**
- * 
+ * create a struct wait_queue_entry, with its name = name.
  * #include <linux/wait.h>
+ * 
+ * This is equivalent to the following:
+ * 		wait_queue_t my_wait;
+ * 		init_wait(&my_wait);
  */ 
+DEFINE_WAIT(name);
+
 #define DEFINE_WAIT(name) DEFINE_WAIT_FUNC(name, autoremove_wake_function)
 
 int autoremove_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, int sync, void *key)
@@ -150,3 +156,26 @@ int autoremove_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, i
 
 	return ret;
 }
+
+/**
+ * @brief flags used to indicate the possible operations
+ * #include <linux/poll.h>
+ * used in poll_wait()
+ * 
+ * more info, see ldd3 p.164
+ */
+POLLIN     // this bit must be set if the device can be read without blocking
+POLLRDNORM // This bit must be set if “normal” data is available for reading. 
+           // A readable device returns (POLLIN | POLLRDNORM).
+POLLOUT    // This bit is set in the return value if the device can be written 
+		   // to without blocking.
+POLLWRNORM // This bit has the same meaning as POLLOUT, and sometimes it actually 
+           // is the same number. A writable device returns (POLLOUT | POLLWRNORM).
+POLLPRI    // High-priority data (out-of-band) can be read without blocking. 
+           // This bit causes select() to report that an exception condition 
+		   // occurred on the file, because select reports out-of-band data as 
+		   // an exception condition.
+POLLHUP    // When a process reading this device sees end-of-file, the driver 
+		   // must set POLLHUP (hang-up). 
+POLLERR    // An error condition has occurred on the device. 
+

@@ -363,7 +363,9 @@ wake_up_interruptible_sync(wait_queue_head_t *queue);
  * process is the one that invoked the call. Kernel code can use process-specific 
  * information by using current, if it needs to do so. 
  */ 
-current
+current;
+current->comm; // the command of current process
+current->pid; // the pid of current process
 
 
 /**
@@ -492,8 +494,13 @@ int fasync_helper(int fd, struct file * filp, int on, struct fasync_struct **fap
 }
 
 /**
- * 
+ * allocation and initialization of a wait_queue_entry structure, to be added to
+ * wait_queue_head_t structure
  * #include <linux/wait.h>
+ * 
+ * This is equivalent to the following:
+ * 		wait_queue_t my_wait;
+ * 		init_wait(&my_wait);
  */ 
 #define DEFINE_WAIT(name) DEFINE_WAIT_FUNC(name, autoremove_wake_function)
 
@@ -506,3 +513,153 @@ int autoremove_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, i
 
 	return ret;
 }
+
+
+/**
+ * add the wait queue entry to the queue, and set the process state.
+ * 
+ * @wq_head: ptr to the head of the wait queue
+ * @wq_entry: the entry to be added to the wait queue
+ * @state: the process state to be set when adding to the queue
+ * 		1) TASK_RUNNING - the process is able to run, although it is not necessarily 
+ *         	              executing in the processor at any specific moment
+ *      2) other two states that indicate that a process is asleep
+ *				TASK_INTERRUPTIBLE, and TASK_UNINTERRUPTIBLE, corresponding to 
+ *				two types of sleep.	
+ *
+ * Note: we use "set_current_state()" _after_ the wait-queue add,
+ * because we need a memory barrier there on SMP, so that any
+ * wake-function that tests for the wait-queue being active
+ * will be guaranteed to see waitqueue addition _or_ subsequent
+ * tests in this thread will see the wakeup having taken place.
+ *
+ * The spin_unlock() itself is semi-permeable and only protects
+ * one way (it only protects stuff inside the critical region and
+ * stops them from bleeding out - it would still allow subsequent
+ * loads to move into the critical region).
+ */
+void
+prepare_to_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry, int state)
+{
+	unsigned long flags;
+
+	wq_entry->flags &= ~WQ_FLAG_EXCLUSIVE;
+	spin_lock_irqsave(&wq_head->lock, flags);
+	if (list_empty(&wq_entry->entry))
+		__add_wait_queue(wq_head, wq_entry);
+	set_current_state(state);
+	spin_unlock_irqrestore(&wq_head->lock, flags);
+}
+
+/**
+ * schedule() - the way to invoke the scheduler and yield (give up)
+ *              the CPU.
+ * #include <linux/sched.h>
+ * Whenever we call this function, we are telling the kernel to consider
+ * which process should be running and to switch control to that process
+ * if necessary. So we never know how long it will be before schedule()
+ * returns to our code.
+ * 
+ * @return: schedule() will not return until the process is in a 
+ *          runnable state.
+ */ 
+asmlinkage __visible void __sched schedule(void)
+{
+	struct task_struct *tsk = current;
+
+	sched_submit_work(tsk);
+	do {
+		preempt_disable();
+		__schedule(false);
+		sched_preempt_enable_no_resched();
+	} while (need_resched());
+	sched_update_worker(tsk);
+}
+
+/**
+ * finish_wait - clean up after waiting in a queue
+ * @wq_head: waitqueue waited on
+ * @wq_entry: wait descriptor
+ *
+ * Sets current thread back to running state and removes
+ * the wait descriptor from the given waitqueue if still
+ * queued.
+ */
+void finish_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry)
+{
+	unsigned long flags;
+
+	__set_current_state(TASK_RUNNING);
+	/*
+	 * We can check for list emptiness outside the lock
+	 * IFF:
+	 *  - we use the "careful" check that verifies both
+	 *    the next and prev pointers, so that there cannot
+	 *    be any half-pending updates in progress on other
+	 *    CPU's that we haven't seen yet (and that might
+	 *    still change the stack area.
+	 * and
+	 *  - all other users take the lock (ie we can only
+	 *    have _one_ other CPU that looks at or modifies
+	 *    the list).
+	 */
+	if (!list_empty_careful(&wq_entry->entry)) {
+		spin_lock_irqsave(&wq_head->lock, flags);
+		list_del_init(&wq_entry->entry);
+		spin_unlock_irqrestore(&wq_head->lock, flags);
+	}
+}
+
+
+// signal_pending() tells us whether we were awakened by a signal
+static inline int signal_pending(struct task_struct *p)
+{
+	/*
+	 * TIF_NOTIFY_SIGNAL isn't really a signal, but it requires the same
+	 * behavior in terms of ensuring that we break out of wait loops
+	 * so that notify signal callbacks can be processed.
+	 */
+	if (unlikely(test_tsk_thread_flag(p, TIF_NOTIFY_SIGNAL)))
+		return 1;
+	return task_sigpending(p);
+}
+
+
+/**
+ * fcntl() - manipulate file descriptor
+ * #include <unistd.h>
+ * #include <fcntl.h> 
+ * @fd: file descriptor
+ * @cmd: the command to perform
+ * @third_arg: depends on @cmd
+ *
+ * @link: https://manpages.ubuntu.com/manpages/artful/man2/fcntl.2.html
+ */
+int fcntl(int fd, int cmd, ... /* arg */ );
+
+
+/**
+ * poll() - sychronous I/O multiplexing
+ * #include <poll.h>
+ * 
+ * The poll() system call examines a set of file descriptors to see if some of 
+ * them are ready for I/O.  
+ * The fds argument is a pointer to an array of pollfd structures as defined in
+     <poll.h> (shown below).  The nfds argument determines the size of the fds array.
+ * 
+ */
+int poll(struct pollfd fds[], nfds_t nfds, int timeout);
+
+/**
+ * poll_wait() - wait for selectable event to be ready
+ * #include <linux/poll.h>
+ * 
+ * Used for a device driver to put @sync into the poll_table immediately entering
+ * the device poll routine, then returning a bit mask of events that are currently
+ * ready. The kernel looks at the mask of events to see if something it needs is
+ * ready, and suspends the process if not.
+ * 
+ * @param sync the wait_queue to be added to the poll_table
+ * @param pt pointer to the poll_table
+ */
+void poll_wait(struct wait_queue **sync, poll_table *pt);
