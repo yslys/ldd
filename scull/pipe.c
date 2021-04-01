@@ -1,6 +1,9 @@
 /**
  * a Blocking I/O example
  * a pipe-like device
+ * read - using wait_event();
+ * write - using prepare_to_wait() and finish_wait();
+ * Normally, only one wait mechanism is chosen. 
  * pipe.c -- fifo driver for scull
  *
  * Copyright (C) 2001 Alessandro Rubini and Jonathan Corbet
@@ -39,10 +42,18 @@
 
 struct scull_pipe {
     wait_queue_head_t inq, outq;       /* read and write queues */
+                                       /* wait_queue_head_t contains info about 
+                                        * sleeping process and exactly how it 
+                                        * would like to be woken up
+                                        */
     char *buffer, *end;                /* begin of buf, end of buf */
     int buffersize;                    /* used in pointer arithmetic */
     char *rp, *wp;                     /* where to read, where to write 
                                           read position and write position */
+                                       /* wp = rp+1  => device buffer full
+                                          wp = rp    => device buffer empty
+                                          o.w.       => there's space to write
+                                        */
     int nreaders, nwriters;            /* number of openings for r/w */
     struct fasync_struct *async_queue; /* asynchronous readers */
     struct mutex lock;                 /* mutual exclusion mutex */
@@ -147,6 +158,28 @@ static int scull_p_open(struct inode *inode, struct file *filp)
     return nonseekable_open(inode, filp); // return 0 on success (nonseekable open)
 }
 
+/**
+ * set up the fasync queue
+ * @fd: used in fasync_helper, but not used in this case, as fd is set to -1
+ * @filp: the file pointer that holds the dev info
+ * @mode: used by fasync_helper()
+ * @return: the retval of fasync_helper()
+ */ 
+static int scull_p_fasync(int fd, struct file *filp, int mode)
+{
+    struct scull_pipe *dev = filp->private_data;
+    
+    // set up the fasync queue (file asynchronous)
+    return fasync_helper(fd, filp, mode, &dev->async_queue);
+}
+
+
+/**
+ * @brief release the device
+ * 
+ * @param filp 
+ * @return int 
+ */
 static int scull_p_release(struct *inode, struct file *filp)
 {
     // get the device info from filp->private data
@@ -175,21 +208,6 @@ static int scull_p_release(struct *inode, struct file *filp)
 
     mutex_unlock(&dev->lock);
     return 0;
-}
-
-/**
- * set up the fasync queue
- * @fd: used in fasync_helper, but not used in this case, as fd is set to -1
- * @filp: the file pointer that holds the dev info
- * @mode: used by fasync_helper()
- * @return: the retval of fasync_helper()
- */ 
-static int scull_p_fasync(int fd, struct file *filp, int mode)
-{
-    struct scull_pipe *dev = filp->private_data;
-    
-    // set up the fasync queue (file asynchronous)
-    return fasync_helper(fd, filp, mode, &dev->async_queue);
 }
 
 
@@ -343,6 +361,11 @@ static ssize_t scull_p_read(struct file *filp, char __user *buf, size_t count,
      * Hence, we need to awake any writers and return
      */
     wake_up_interruptible(&dev->outq); // awake those waiting in out(write) queue
+
+    /**
+     * When you compile the driver, you can enable messaging to make it easier 
+     * to follow the interaction of different processes. (PDEBUG)
+     */ 
     PDEBUG("\"%s\" did read %li bytes\n",current->comm, (long)count);
     return count;
 }
@@ -368,18 +391,360 @@ static int spacefree(struct scull_pipe *dev)
 }
 
 /**
+ * Advanced sleeping using the wait queue mechanism
  * Wait for space for writing; caller must hold device semaphore.  
  * On error the semaphore will be released before returning.
  * @caller: scull_p_write()
  */
 static int scull_getwritespace(struct scull_pipe *dev, struct file *filp)
 {
+    /**
+     * Note that this is advanced sleeping using the wait queue mechanism
+     */
     // while there's no space for writing
     while(spacefree(dev) == 0){
+        // create and initialize a struct wait_queue_entry, with its name = wait.
         DEFINE_WAIT(wait);
 
+        // unlock the device (drop the semaphore) before wait()
         mutex_unlock(&dev->lock);
 
+        // if the write is Non-block, then try again
+        if(filp->f_flags & O_NONBLOCK){
+            return -EAGAIN;
+        }
 
+        // else, the write is NOT non-block, then put it to sleep
+        // print the command of current process, and go to sleep (if enabled debugging)
+        PDEBUG("\"%s\" writing: going to sleep\n",current->comm);
+
+        /** 
+         * do several things while spinlock acquired;
+         * wait this writing process to dev->outq;
+         * set the state of this current process to mark it as being asleep;
+         * by changing the STATE of the process, we have changed the way the 
+         * scheduler treats a process, but have not yet yielded (give up) the processor
+         */
+        prepare_to_wait(&dev->outq, &wait, TASK_INTERRUPTIBLE);
+        // prepare_to_wait_exclusive() to set the "exclusive" falg in the wait queue entry
+        // and adds current process to the end of wait queue.
+
+        /** 
+         * hence, in this final step of putting current process to sleep, we are 
+         * going to give up the processor.
+         * BUT before that, we need to check the condition we are sleeping for.
+         * Failure to do that will invite a race condition - 
+         *      What if the condition came true while we were engaged in the process,
+         *      and some other thread has just tried to wake us up? We would miss
+         *      the wakeup altogether and sleep longer than intended.
+         *      
+         */ 
+        if(spacefree(dev) == 0){
+            /**
+             * By checking the condition after setting the process state, we are
+             * covered against all possible sequences of events. If the condition 
+             * we are waiting for had come about before setting the process state, 
+             * we notice in this check and not actually sleep. If the wakeup 
+             * happens thereafter, the process is made runnable whether or not 
+             * we have actually gone to sleep yet.
+             */ 
+
+            /**
+             * schedule() - the way to invoke the scheduler and yield (give up)
+             *              the CPU.
+             * Whenever we call this function, we are telling the kernel to consider
+             * which process should be running and to switch control to that process
+             * if necessary. So we never know how long it will be before schedule()
+             * returns to our code.
+             * 
+             * @return: schedule() will not return until the process is in a 
+             *          runnable state.
+             */ 
+            schedule();
+
+            /**
+             * One thing worth looking at is - what happens if the wakeup happens 
+             * between the test in the if statement and the call to schedule? 
+             * In that case, all is well. The wakeup resets the process state to 
+             * TASK_RUNNING and schedule returns—although not necessarily right 
+             * away. As long as the test happens after the process has put itself 
+             * on the wait queue and changed its state, things will work.
+             */
+        }
+
+        /**
+         * if the if-condition is true, then we do not worry about doing the cleanup
+         * because schedule() will reset the task state to TASK_RUNNING.
+         * However, if the if-condition was false, that means we will not call 
+         * schedule(), and current process was not necessary to sleep. Hence, we 
+         * need to manually i) reset the task state to TASK_RUNNING;
+         *                  ii) remove the process from the wait queue, or it may
+         *                      be awakened more than once.
+         * The above is done by calling finish_wait() defined in <linux/wait.h>
+         */ 
+        finish_wait(&dev->outq, &wait);
+
+        // signal_pending() tells us whether we were awakened by a signal
+        // note that @current is a pointer to a struct task_struct
+        if(signal_pending(current)){ // if we were awakened by a signal
+            return -ERESTARTSYS; // return to the user and let them try again later
+        }
+        // otherwise, we re-acquire the semaphore, and test again for free space (in while-loop)
+        if(mutex_lock_interruptible(&dev->lock)){
+            return -ERESTARTSYS;
+        }
     }
+
+    return 0; // on success, meaning there's free space to write
+}
+
+
+/**
+ * write method
+ */
+static ssize_t scull_p_write(struct file *filp, const char __user *buf, 
+                             size_t count, loff_t *f_ops)
+{
+    struct scull_pipe *dev = filp->private_data;
+    int result;
+
+    // whenever we want to operate on the device, need to acquire the lock of it.
+    if(mutex_lock_interruptible(&dev->lock)){
+        return -ERESTARTSYS;
+    }
+
+    // make sure there's space to write
+    result = scull_getwritespace(dev, filp);
+    if(result){
+        return result;
+    }
+
+    // now, there's space to write
+    // first, find out how many bytes could be written
+    //      count - from user, 
+    //      spacefree(dev) - actual space available
+    count = min(count, (size_t)spacefree(dev));
+
+    // if write position is greater than or equal to read position
+    // can only write to dev->end, i.e.
+    // can write at most (dev->end - dev->wp) bytes
+    if(dev->wp >= dev->rp){
+        count = min(count, (size_t)(dev->end - dev->wp));
+    }
+    // else, if read position exceeds write position,
+    // can write up to read position, but not exceeding it.
+    // don't know why? Imagine the buffer of the device to be a circular buffer
+    else{
+        count = min(count, (size_t)(dev->rp - dev->wp - 1));
+    }
+
+    PDEBUG("Going to accept %li bytes to %p from %p\n", (long)count, dev->wp, buf);
+
+    // start writing from user space to kernel space
+    if(copy_from_user(dev->wp, buf, count)){
+        // copy_from_user() fails, then unlock the device and return
+        mutex_unlock(&dev->lock);
+        return -EFAULT;
+    }
+
+    // now, it means writing succeeded
+    // update the write position
+    dev->wp += count;
+
+    // not yet finished, need to check if wp reaches the end of device's buffer
+    if(dev->wp == dev->end){
+        dev->wp = dev->buffer; // update write position to be the start of buffer
+    }
+
+    // now, we can release the semaphore of the device safe
+    mutex_unlock(&dev->lock);
+
+    // can we return now? Not yet! there might be readers waiting, wake them up!
+    wake_up_interruptible(&dev->inq);
+
+    // remember that we still have a data structure called async_queue in scull_pipe
+    // this is discused in Chapter 5.
+    // TODO
+    if(dev->async_queue){
+        kill_fasync(&dev->async_queue, SIGIO, POLL_IN);
+    }
+
+    PDEBUG("\"%s\" did write %li bytes\n",current->comm, (long)count);
+    return count;
+}
+
+/**
+ * poll() syscall implementation - sychronous I/O multiplexing
+ * 
+ * 
+ * @wait: pointer to a poll_table struct, declared in <linux/poll.h>. It is passed
+ *        to the driver method s.t. the driver can load it with every wait queue
+ *        that could wake up the process and change the status of the poll operation.
+ * @wait: pointer to the poll_table structure
+ * @return: a bit mask indicating the operation could be performed without blocking
+ * 
+ * This method is in charge of the following 2 steps:
+ * 1. Call poll_wait() on one or more wait queues that could indicate a change 
+ *      in the poll status. If no file descriptors are currently available for 
+ *      I/O, the kernel causes the process to wait on the wait queues for all 
+ *      file descriptors passed to the system call.
+ * 2. Return a bit mask describing the operations (if any) that could be 
+ *      immediately performed without blocking.
+ */
+static unsigned int scull_p_poll(struct file *filp, poll_table *wait)
+{
+    struct scull_pipe *dev = filp->private_data;
+    unsigned int mask = 0;
+
+    // acquire the lock first
+    mutex_lock(&dev->lock);
+
+    // add two wait queues to the poll_table structure
+    poll_wait(filp, &dev->inq, wait);
+    poll_wait(filp, &dev->outq, wait);
+
+    // if read position != write position => device is not empty => readable
+    if(dev->rp != dev->wp){
+        mask = mask | POLLIN | POLLRDNORM; // readable (more info, see macros.c)
+    }
+
+    // if spacefree() returns non-negative number
+    if(spacefree(dev)){
+        mask |= POLLOUT | POLLWRNORM; // writable (more info, see macros.c)
+    }
+
+    /**
+     * this poll() method does not implement end-of-file support because
+     * scullpipe does not support an end-of-file condition. 
+     * For most real devices, the poll method should return POLLHUP if no more data
+     * is (or will become) available. If the caller used the select system call, 
+     * the file is reported as readable. Regardless of whether poll or select is 
+     * used, the application knows that it can call read without waiting forever,
+     * and the read method returns, 0 to signal end-of-file.
+     * 
+     * Implementing end-of-file in the same way as FIFOs do would mean checking 
+     * dev->nwriters, both in read and in poll, and reporting end-of-file (as 
+     * just described) if no process has the device opened for writing.
+     * 
+     * For more details, refer to ldd3 p. 165
+     */
+
+    // after we may have made the mask to be readable and/or writable or neither,
+    // unlock the device
+    mutex_unlock(&dev->lock);
+
+    return mask;
+}
+
+
+/******************************************************************************/
+
+/* FIXME this should use seq_file */
+#ifdef SCULL_DEBUG
+
+static int scull_read_p_mem(struct seq_file *s, void *v)
+{
+	int i;
+	struct scull_pipe *p;
+
+#define LIMIT (PAGE_SIZE-200)        /* don't print any more after this size */
+	seq_printf(s, "Default buffersize is %i\n", scull_p_buffer);
+	for(i = 0; i<scull_p_nr_devs && s->count <= LIMIT; i++) {
+		p = &scull_p_devices[i];
+		if (mutex_lock_interruptible(&p->lock))
+			return -ERESTARTSYS;
+		seq_printf(s, "\nDevice %i: %p\n", i, p);
+/*		seq_printf(s, "   Queues: %p %p\n", p->inq, p->outq);*/
+		seq_printf(s, "   Buffer: %p to %p (%i bytes)\n", p->buffer, p->end, p->buffersize);
+		seq_printf(s, "   rp %p   wp %p\n", p->rp, p->wp);
+		seq_printf(s, "   readers %i   writers %i\n", p->nreaders, p->nwriters);
+		mutex_unlock(&p->lock);
+	}
+	return 0;
+}
+
+static int scullpipe_proc_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, scull_read_p_mem, NULL);
+}
+
+static struct file_operations scullpipe_proc_ops = {
+	.owner   = THIS_MODULE,
+	.open    = scullpipe_proc_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = single_release
+};
+
+#endif
+
+/*
+ * Set up a cdev entry.
+ */
+static void scull_p_setup_cdev(struct scull_pipe *dev, int index)
+{
+	int err, devno = scull_p_devno + index;
+    
+	cdev_init(&dev->cdev, &scull_pipe_fops);
+	dev->cdev.owner = THIS_MODULE;
+	err = cdev_add (&dev->cdev, devno, 1);
+	/* Fail gracefully if need be */
+	if (err)
+		printk(KERN_NOTICE "Error %d adding scullpipe%d", err, index);
+}
+
+
+/*
+ * Initialize the pipe devs; return how many we did.
+ */
+int scull_p_init(dev_t firstdev)
+{
+	int i, result;
+
+	result = register_chrdev_region(firstdev, scull_p_nr_devs, "scullp");
+	if (result < 0) {
+		printk(KERN_NOTICE "Unable to get scullp region, error %d\n", result);
+		return 0;
+	}
+	scull_p_devno = firstdev;
+	scull_p_devices = kmalloc(scull_p_nr_devs * sizeof(struct scull_pipe), GFP_KERNEL);
+	if (scull_p_devices == NULL) {
+		unregister_chrdev_region(firstdev, scull_p_nr_devs);
+		return 0;
+	}
+	memset(scull_p_devices, 0, scull_p_nr_devs * sizeof(struct scull_pipe));
+	for (i = 0; i < scull_p_nr_devs; i++) {
+		init_waitqueue_head(&(scull_p_devices[i].inq));
+		init_waitqueue_head(&(scull_p_devices[i].outq));
+		mutex_init(&scull_p_devices[i].lock);
+		scull_p_setup_cdev(scull_p_devices + i, i);
+	}
+#ifdef SCULL_DEBUG
+	proc_create("scullpipe", 0, NULL, proc_ops_wrapper(&scullpipe_proc_ops,scullpipe_pops));
+#endif
+	return scull_p_nr_devs;
+}
+
+/*
+ * This is called by cleanup_module or on failure.
+ * It is required to never fail, even if nothing was initialized first
+ */
+void scull_p_cleanup(void)
+{
+	int i;
+
+#ifdef SCULL_DEBUG
+	remove_proc_entry("scullpipe", NULL);
+#endif
+
+	if (!scull_p_devices)
+		return; /* nothing else to release */
+
+	for (i = 0; i < scull_p_nr_devs; i++) {
+		cdev_del(&scull_p_devices[i].cdev);
+		kfree(scull_p_devices[i].buffer);
+	}
+	kfree(scull_p_devices);
+	unregister_chrdev_region(scull_p_devno, scull_p_nr_devs);
+	scull_p_devices = NULL; /* pedantic */
 }
