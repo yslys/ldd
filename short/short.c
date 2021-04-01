@@ -1,5 +1,6 @@
 /*
  * short.c -- Simple Hardware Operations and Raw Tests
+ * Read and write a few 8-bit ports, starting from the one we select at load time.
  * short.c -- also a brief example of interrupt handling ("short int")
  *
  * Copyright (C) 2001 Alessandro Rubini and Jonathan Corbet
