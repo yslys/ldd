@@ -118,11 +118,85 @@ static inline void short_incr_bp(volatile unsigned long *index, int delta)
  * when interrupts have been received. Writing to the device toggles
  * 00/FF on the parallel data lines. If there is a loopback wire, this
  * generates interrupts.  
+ * 
+ * I was confused about inode and file structures here at the beginning.
+ * inode contains the metadata of a file in Linux, a unique number assigned to 
+ *      files and directories while it is created.
+ * file represents an open file - not the metadata.
+ * 
+ * You can open a file for reading or writing using the open system call. 
+ * This returns a file descriptor. Linux maintains a global file descriptor 
+ * table and adds an entry to it representing the opened file. This entry is 
+ * represented by the file structure which is local to the process. Internally, 
+ * linux uses the inode struct to represent the file. The file struct has a 
+ * pointer to this and linux ensures that multiple file descriptors that touch 
+ * the same file point to the same inode so that their changes are visible to 
+ * each other. The i_mapping field on the inode struct is what’s used to get 
+ * the right set of pages from the page cache for an offset in the file.
+ * 
+ * https://medium.com/i0exception/memory-mapped-files-5e083e653b1
  */
+int short_open(struct inode *inode, struct file *filp)
+{
+    extern struct file_operations short_i_fops;
 
+    /**
+     * note that major numbers and minor numbers are 8-bit quantities.
+     * iminor(inode) gets the minor number of this device.
+     * performing bitwise AND with 0x80 (0b10000000),
+     * only when minor number is 128 will enter the if-statement
+     */
+    if(iminor (inode) & 0x80){ // 0x80 is 128 in decimal, 0b10000000 in binary
+        filp->f_op = &short_i_fops;
+    }
+
+    return 0;
+}
 
 
 int short_release(struct inode *inode, struct file *filp)
 {
     return 0;
+}
+
+/**
+ * first, the port-oriented device
+ */
+// 0,1,2,3
+enum short_modes {SHORT_DEFAULT=0, SHORT_PAUSE, SHORT_STRING, SHORT_MEMORY}; 
+
+ssize_t do_short_read(struct inode *inode, struct file *filp, char __user *buf,
+                      size_t count, loff_t *f_ops)
+{
+    // return # of bytes read
+    int retval = count; 
+
+    // get the minor number of the device
+    int minor = iminor(inode); 
+
+    // short_base is a relative offset, base is 0x378 (the first port, port0)
+    unsigned long port = short_base + (minor & 0x0f);
+
+    // 
+    void *address = (void *) short_base + (minor * 0x0f);
+
+    // 0x70 is ob1110000
+    int mode = (minor & 0x70) >> 4;
+    unsigned char *kbuf = kmalloc(count, GFP_KERNEL);
+    unsigned char *ptr;
+
+
+}
+
+
+
+/**
+ * init and cleanup
+ */
+int short_init(void)
+{
+    int result;
+
+    // irq - interrupt requests
+
 }
