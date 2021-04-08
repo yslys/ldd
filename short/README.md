@@ -1,9 +1,9 @@
-## "short" device (Chapter 9 - Communicating with Hardware)
+# "short" device (Chapter 9 - Communicating with Hardware)
 Implementing a real device requires hardware. In scull, we have examined the internals of software concepts; this device will show you how a driver can access I/O ports and I/O memory while being portable across Linux platforms.
 
 We use simple digital I/O ports (such as the standard PC parallel port) to show how the I/O instructions work and normal frame-buffer video memory to show memory-mapped I/O.
 
-### I/O Ports and I/O Memory
+## I/O Ports and I/O Memory
 Every peripheral device is controlled by writing and reading its registers. Most of the time a device has several registers, and they are accessed at consecutive addresses, either in the memory address space or in the I/O address space.
 
 At the hardware level, both memory regions and I/O regions are accessed by asserting electrical signals on **address bus** and **control bus**, and by reading from or writing to the **data bus**.
@@ -51,7 +51,7 @@ writel(dev->registers.control, DEV_GO);
 Memory barriers should be used only where they're really needed.
 
 
-### Using I/O Ports
+## Using I/O Ports
 I/O ports are the means by which drivers communicate with many devices, at least part of the time.
 
 1. Driver must claim the ports it needs, making sure that it has exclusive access to those ports. ```request_region()``` in *<linux/ioport.h>*
@@ -114,3 +114,39 @@ If the device misses some data, or if you fear it might miss some, you can use p
 
 ### I/O Port Example
 short.c
+
+Such program is yet to be finished.
+
+
+## Using I/O Memory
+Instead of using I/O ports, there's another mechanism used to communicate with devices - through **memory-mapped registers** and **device memory**. Both are called I/O memory.
+
+What is I/O memory?
+
+A region of RAM-like locations that the device makes available to the processor over the bus. Such memory can be used, for instance, for holding video data, or Ethernet packets, or implementing device registers that behave like I/O ports.
+
+Depending on the computer platform and bus being used, I/O memory may or may not be accessed through page tables. 
+- When access passes through page tables, the kernel must first arrange for the physical address to be visible from your driver, i.e. must call ```ioremap``` before doing any I/O. 
+- If no page tables are needed, I/O memory locations look pretty much like I/O ports, i.e. can just read/write to them using wrapper functions.
+
+Never directly use pointers to I/O memory, since its unsafe, even though I/O memory is addressed like normal RAM at hardware level. So, use those wrapper functions.
+
+### I/O Memory Allocation and Mapping
+i) allocation, ii) mapping (ensure such I/O memory is accessible to the kernel)
+
+#### I/O memory allocation (request_mem_region)
+I/O memory regions must be allocated prior to use. The interface for allocation of memory regions (defined in **<linux/ioport.h>**) is:
+```
+struct resource *request_mem_region(unsigned long start, unsigned long len,
+                                    char *name);
+```
+This function allocates a memory region of ```len``` bytes, starting at ```start```. If all goes well, a non-NULL pointer is returned; otherwise the return value is NULL. All I/O memory allocations are listed in /proc/iomem.
+
+Memory regions should be freed when no longer needed:
+```
+void release_mem_region(unsigned long start, unsigned long len);
+```
+
+#### I/O memory mapping (ioremap)
+
+see course on Coursera.
