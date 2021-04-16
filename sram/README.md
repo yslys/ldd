@@ -4,7 +4,7 @@ if (part->pool &&
         gen_pool_avail(part->pool) < gen_pool_size(part->pool)) {
       dev_err(sram->dev, "removed pool while SRAM allocated\n");
 }
-``
+```
 
 [line #533](https://github.com/yslys/ldd/blob/main/sram/sram.c#L533) (in sram_reserve_regions())
 ```
