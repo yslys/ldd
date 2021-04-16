@@ -1,5 +1,9 @@
 [line #322](https://github.com/yslys/ldd/blob/main/sram/sram.c#L322) (in sram_free_partitions())
 ```
+/*
+  Why does available space in pool less then pool size will cause an error?
+  "removed while SRAM allocated"?
+*/
 if (part->pool &&
         gen_pool_avail(part->pool) < gen_pool_size(part->pool)) {
       dev_err(sram->dev, "removed pool while SRAM allocated\n");
