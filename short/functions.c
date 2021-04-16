@@ -663,3 +663,22 @@ int poll(struct pollfd fds[], nfds_t nfds, int timeout);
  * @param pt pointer to the poll_table
  */
 void poll_wait(struct wait_queue **sync, poll_table *pt);
+
+
+/*
+ * Kernel pointers have redundant information, so we can use a
+ * scheme where we can return either an error code or a normal
+ * pointer with the same return value.
+ *
+ * This should be a per-architecture thing, to allow different
+ * error and pointer decisions.
+ */
+static inline long __must_check PTR_ERR(__force const void *ptr)
+{
+	return (long) ptr;
+}
+
+static inline bool __must_check IS_ERR(__force const void *ptr)
+{
+	return IS_ERR_VALUE((unsigned long)ptr);
+}
