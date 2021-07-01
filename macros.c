@@ -179,3 +179,8 @@ POLLHUP    // When a process reading this device sees end-of-file, the driver
 		   // must set POLLHUP (hang-up). 
 POLLERR    // An error condition has occurred on the device. 
 
+/*
+ * add the name of the func to the kernel symbol table so that other kernel modules could
+ * use the func.
+ */
+EXPORT_MODULE(func_name);
